@@ -32,7 +32,7 @@ MEMORY_LIMIT_MB = 900      # Trigger fallback if RSS exceeds this
 TXT_CHUNK_WORDS = 500      # When a TXT has no blank lines, chunk every N words
 
 # ── Wikipedia ZIM (tuned for 115GB on 8GB RAM) ────────────────────────
-WIKI_BATCH_SIZE = 25       # Articles per batch — 25 prevents OOM during vectorization
+WIKI_BATCH_SIZE = 200      # Articles per batch
 RAM_MIN_AVAILABLE_MB = 1024  # Pause if available RAM drops below 1GB
 RAM_COOLDOWN_SECS = 10     # Seconds to sleep when RAM threshold is hit
 WIKI_VELOCITY_INTERVAL = 1000  # Print speed report every N articles

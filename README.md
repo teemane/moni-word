@@ -2,13 +2,21 @@
 
 A text ingestion pipeline that converts raw documents and Wikipedia dumps into a searchable vector database for local RAG (Retrieval Augmented Generation).
 
-Ingest CSVs, JSON, plain text, or Wikipedia ZIM files. Deduplicate with MinHash LSH. Embed with sentence-transformers. Search by meaning.
+Ingest CSVs, JSON, plain text, or Wikipedia ZIM files. Deduplicate with MinHash LSH. Embed with sentence-transformers. Ask questions answered by a local LLM.
 
 ## Install
 
 ```bash
 pip install -r requirements.txt
 ```
+
+You'll also need [Ollama](https://ollama.com/) for the RAG feature (option 7):
+
+```bash
+ollama pull phi3:mini
+```
+
+Any Ollama model works. Pick one that fits your VRAM.
 
 ## Usage
 
@@ -24,8 +32,9 @@ The interactive menu walks you through each stage:
 4. **Vectorize** with sentence-transformer embeddings + topic clustering
 5. **Full Pipeline** runs 1 → 2 → 4 back-to-back
 6. **Search** your database by meaning
-7. **Stats** to see what's in the pipeline
-8. **Reset** to wipe all outputs and start fresh
+7. **Ask a Question** using RAG with a local LLM via Ollama
+8. **Stats** to see what's in the pipeline
+9. **Reset** to wipe all outputs and start fresh
 
 ## How it works
 
@@ -42,7 +51,10 @@ Your data (CSV, JSON, TXT, Wikipedia ZIM)
 [Embed]  --> semantic_map.db      (384-dim vectors + 50 topic clusters)
      |
      v
-[Search] --> query by meaning     (cosine similarity over embeddings)
+[Search] --> find relevant docs   (cosine similarity over embeddings)
+     |
+     v
+[RAG]   --> ask a question        (local LLM answers using your data)
 ```
 
 ## Project Structure
@@ -56,6 +68,7 @@ tools/
   wiki_ingestor.py  # Wikipedia ZIM streaming with checkpoints
   vectorizer.py     # Sentence-transformer embeddings + clustering
   search.py         # Semantic search over the built database
+  rag.py            # RAG pipeline, connects search to Ollama
 ```
 
 ## Output
@@ -77,7 +90,7 @@ Edit `tools/config.py`:
 SHINGLE_SIZE = 3            # Dedup shingle size
 LSH_THRESHOLD = 0.85        # Similarity cutoff for duplicates
 BATCH_SIZE = 100             # Vectorizer batch size
-WIKI_BATCH_SIZE = 25         # Wikipedia batch size
+WIKI_BATCH_SIZE = 200        # Wikipedia batch size
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 N_CLUSTERS = 50              # Topic clusters
 ```
@@ -111,6 +124,8 @@ You can also grab pre-built ZIM files from the [Kiwix library](https://library.k
 datasketch, sentence-transformers, scikit-learn,
 beautifulsoup4, psutil, pandas, tqdm, libzim (Linux/WSL)
 ```
+
+Ollama is needed for the RAG feature but not for the rest of the pipeline.
 
 ## License
 

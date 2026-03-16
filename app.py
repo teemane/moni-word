@@ -10,8 +10,9 @@
     4. Vectorize            (sentence-transformers  -->  vectors.jsonl + semantic_map.db)
     5. Run Full Pipeline    (1 -> 2 -> 4, step by step)
     6. Search               (query by meaning)
-    7. View Pipeline Stats
-    8. Reset Pipeline       (wipe all outputs)
+    7. Ask a Question       (RAG + local LLM via Ollama)
+    8. View Pipeline Stats
+    9. Reset Pipeline       (wipe all outputs)
 
   Run:  python app.py
 ===========================================================
@@ -64,8 +65,9 @@ MENU = """
   |  [4]  Vectorize           (Embeddings + Semantic Map)    |
   |  [5]  Run Full Pipeline   (1 -> 2 -> 4, step by step)   |
   |  [6]  Search              (Query by Meaning)             |
-  |  [7]  View Pipeline Stats                                |
-  |  [8]  Reset Pipeline      (wipe all outputs)             |
+  |  [7]  Ask a Question      (RAG + Local LLM via Ollama)   |
+  |  [8]  View Pipeline Stats                                |
+  |  [9]  Reset Pipeline      (wipe all outputs)             |
   |  [0]  Exit                                               |
   +---------------------------------------------------------+
 """
@@ -219,34 +221,35 @@ def run_wiki():
     """Stage 3: Wikipedia ZIM ingestion with inline dedup."""
     print_header("STAGE 3: WIKIPEDIA ZIM INGESTION")
 
-    # Check for existing checkpoint
+    # Check for existing checkpoints
     ckpt_db = STATE_DIR / "wiki_checkpoint.db"
     has_checkpoint = False
     if ckpt_db.exists():
         try:
             conn = sqlite3.connect(str(ckpt_db))
-            row = conn.execute(
-                "SELECT zim_path, last_entry_idx, updated_at FROM checkpoints LIMIT 1"
-            ).fetchone()
+            rows = conn.execute(
+                "SELECT zim_path, last_entry_idx, updated_at FROM checkpoints WHERE last_entry_idx > 0 ORDER BY updated_at DESC"
+            ).fetchall()
             conn.close()
-            if row and row[1] > 0:
-                has_checkpoint = True
-                print(f"  [i] CHECKPOINT FOUND from previous run:")
-                print(f"      ZIM: {row[0]}")
-                print(f"      Progress: entry {row[1]:,}")
-                print(f"      Last saved: {row[2]}")
+            if rows:
+                print(f"  [i] CHECKPOINTS FOUND from previous runs:\n")
+                for i, row in enumerate(rows, 1):
+                    zim_name = Path(row[0]).name
+                    print(f"      [{i}] {zim_name}")
+                    print(f"          Progress: entry {row[1]:,}  |  Last saved: {row[2]}")
+                print(f"      [0] Start fresh with a new ZIM file")
                 print()
-                if ask_yes_no("Resume from this checkpoint?"):
-                    zim_path = Path(row[0])
+                choice = input("  Pick a checkpoint to resume [0]: ").strip()
+                if choice and choice != "0" and choice.isdigit() and 1 <= int(choice) <= len(rows):
+                    picked = rows[int(choice) - 1]
+                    has_checkpoint = True
+                    zim_path = Path(picked[0])
                     if not zim_path.exists():
-                        # Try WSL path conversion
                         print(f"  [!] Path not found: {zim_path}")
                         zim_path = ask_path("Enter the correct path to the .zim file")
                         if not zim_path:
                             print("  [!] Cancelled.")
                             return
-                else:
-                    has_checkpoint = False
         except Exception:
             pass
 
@@ -421,6 +424,46 @@ def run_search():
     interactive_mode(model, SEMANTIC_DB_PATH)
 
 
+def run_rag():
+    """Ask a question using RAG with a local LLM via Ollama."""
+    print_header("ASK A QUESTION (RAG + Local LLM)")
+
+    if not SEMANTIC_DB_PATH.exists():
+        print("  [!] semantic_map.db not found.")
+        print("  [!] Run Stage 4 (Vectorize) first.")
+        return
+
+    from tools.rag import check_ollama, list_ollama_models, interactive_rag, DEFAULT_MODEL
+
+    if not check_ollama():
+        print("  [!] Ollama is not running.")
+        print("  [!] Start it with: ollama serve")
+        print("  [!] Install from: https://ollama.com")
+        return
+
+    models = list_ollama_models()
+    if not models:
+        print("  [!] No models found. Pull one with: ollama pull phi3:mini")
+        return
+
+    print(f"  Available Ollama models:\n")
+    for i, m in enumerate(models, 1):
+        default_tag = " (default)" if m == DEFAULT_MODEL else ""
+        print(f"      [{i}] {m}{default_tag}")
+    print()
+
+    choice = input(f"  Pick a model [default: {DEFAULT_MODEL}]: ").strip()
+    if choice and choice.isdigit() and 1 <= int(choice) <= len(models):
+        model = models[int(choice) - 1]
+    else:
+        model = DEFAULT_MODEL
+        if model not in models:
+            model = models[0]
+
+    print(f"  Using: {model}")
+    interactive_rag(model=model, db_path=SEMANTIC_DB_PATH)
+
+
 def show_stats():
     """Display current pipeline status and file stats."""
     print_header("PIPELINE STATUS")
@@ -558,7 +601,7 @@ def main():
         print(BANNER)
         print(MENU)
 
-        choice = input("  Enter your choice [0-8]: ").strip()
+        choice = input("  Enter your choice [0-9]: ").strip()
 
         try:
             if choice == "1":
@@ -574,8 +617,10 @@ def main():
             elif choice == "6":
                 run_search()
             elif choice == "7":
-                show_stats()
+                run_rag()
             elif choice == "8":
+                show_stats()
+            elif choice == "9":
                 run_reset()
             elif choice == "0":
                 print()
